@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔔 Arafat AI Alert System</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f7fa;
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 3px 20px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #3498db;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input, button, select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        button.danger {
+            background: #e74c3c;
+        }
+        button.success {
+            background: #2ecc71;
+        }
+        #alertsContainer {
+            margin-top: 30px;
+        }
+        .alert-card {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+            position: relative;
+        }
+        .alert-card h3 {
+            margin-top: 0;
+        }
+        .alert-meta {
+            color: #7f8c8d;
+            margin: 10px 0;
+        }
+        .alert-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .alert-actions button {
+            padding: 8px 12px;
+            font-size: 14px;
+            width: auto;
+        }
+        .no-alerts {
+            text-align: center;
+            color: #7f8c8d;
+            padding: 20px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Arafat AI Alert System</h1>
+
+        <div class="input-group">
+            <label for="taskInput">Task Description</label>
+            <input type="text" id="taskInput" placeholder="E.g. Take medication at 9AM">
+        </div>
+
+        <div class="input-group">
+            <label for="dateInput">Date</label>
+            <input type="date" id="dateInput">
+        </div>
+
+        <div class="input-group">
+            <label for="timeInput">Time</label>
+            <input type="time" id="timeInput">
+        </div>
+
+        <div class="input-group">
+            <label for="repeatCount">Repeat Alert (times)</label>
+            <select id="repeatCount">
+                <option value="1">1</option>
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+            </select>
+        </div>
+
+        <button onclick="saveAlert()" class="success">Save Alert</button>
+
+        <div id="alertsContainer">
+            <!-- Saved alerts will appear here -->
+        </div>
+    </div>
+
+    <script>
+        // Initialize with current date/time
+        document.addEventListener('DOMContentLoaded', () => {
+            const now = new Date();
+            document.getElementById('dateInput').valueAsDate = now;
+            document.getElementById('timeInput').value =
+                `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+            // Play welcome message
+            setTimeout(() => {
+                speak("Hello! This is Arafat AI system. Ready to set your reminders.", 0.9);
+            }, 500);
+
+            // Load saved alerts
+            loadAlerts();
+        });
+
+        // Speech function with voice selection
+        function speak(text, rate = 0.8) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = rate;
+
+                // Try to find a good voice
+                const voices = window.speechSynthesis.getVoices();
+                const preferredVoice = voices.find(v => v.lang.includes('en'));
+                if (preferredVoice) utterance.voice = preferredVoice;
+
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // Save alert to localStorage
+        function saveAlert() {
+            const task = document.getElementById('taskInput').value.trim();
+            const date = document.getElementById('dateInput').value;
+            const time = document.getElementById('timeInput').value;
+            const repeats = parseInt(document.getElementById('repeatCount').value);
+
+            if (!task || !date || !time) {
+                alert("Please fill all fields!");
+                return;
+            }
+
+            const alertTime = new Date(`${date}T${time}`);
+            const now = new Date();
+
+            if (alertTime <= now) {
+                alert("Please select a future time!");
+                return;
+            }
+
+            const alertId = Date.now().toString();
+            const alertData = {
+                id: alertId,
+                task,
+                time: alertTime.toISOString(),
+                repeats,
+                active: true
+            };
+
+            // Save to localStorage
+            const savedAlerts = JSON.parse(localStorage.getItem('arafatAlerts') || '[]');
+            savedAlerts.push(alertData);
+            localStorage.setItem('arafatAlerts', JSON.stringify(savedAlerts));
+
+            // Update display
+            loadAlerts();
+
+            // Set the actual alert
+            setAlertTimeout(alertId, alertTime, task, repeats);
+
+            // Reset form
+            document.getElementById('taskInput').value = '';
+            speak("Alert saved successfully!", 0.9);
+        }
+
+        // Load alerts from localStorage
+        function loadAlerts() {
+            const savedAlerts = JSON.parse(localStorage.getItem('arafatAlerts') || '[]');
+            const container = document.getElementById('alertsContainer');
+
+            container.innerHTML = '';
+
+            if (savedAlerts.length === 0) {
+                container.innerHTML = '<div class="no-alerts">No saved alerts yet</div>';
+                return;
+            }
+
+            savedAlerts.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+            savedAlerts.forEach(alert => {
+                const alertTime = new Date(alert.time);
+                const alertCard = document.createElement('div');
+                alertCard.className = 'alert-card';
+                alertCard.innerHTML = `
+                    <h3>${alert.task}</h3>
+                    <div class="alert-meta">
+                        <div>⏰ ${alertTime.toLocaleString()}</div>
+                        <div>🔔 Repeats: ${alert.repeats}x</div>
+                        <div>Status: ${alert.active ? 'Active' : 'Inactive'}</div>
+                    </div>
+                    <div class="alert-actions">
+                        <button onclick="testAlert('${alert.id}')">Test Now</button>
+                        <button class="danger" onclick="deleteAlert('${alert.id}')">Delete</button>
+                        <button onclick="toggleAlert('${alert.id}')">
+                            ${alert.active ? 'Disable' : 'Enable'}
+                        </button>
+                    </div>
+                `;
+                container.appendChild(alertCard);
+            });
+        }
+
+        // Set timeout for an alert
+        function setAlertTimeout(alertId, alertTime, task, repeats) {
+            const now = new Date();
+            const timeUntilAlert = alertTime.getTime() - now.getTime();
+
+            if (timeUntilAlert <= 0) return;
+
+            setTimeout(() => {
+                triggerAlert(alertId, task, repeats);
+            }, timeUntilAlert);
+        }
+
+        // Trigger alert with 5x repeats
+        function triggerAlert(alertId, task, repeats) {
+            // Check if alert is still active
+            const savedAlerts = JSON.parse(localStorage.getItem('arafatAlerts') || '[]');
+            const alert = savedAlerts.find(a => a.id === alertId);
+
+            if (!alert || !alert.active) return;
+
+            // Play Arafat AI introduction
+            speak("Hello! This is Arafat AI system. You have an important reminder.", 0.85);
+
+            let count = 0;
+            const repeatInterval = setInterval(() => {
+                speak(`Reminder: ${task}`);
+
+                // Show notification if supported
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification(`🔔 Arafat AI Reminder`, { body: task });
+                }
+
+                count++;
+
+                if (count >= repeats) {
+                    clearInterval(repeatInterval);
+                    // Play completion message
+                    setTimeout(() => {
+                        speak("Reminder completed. Have a nice day!", 0.9);
+                    }, 1000);
+                }
+            }, 2000); // 2 seconds between repeats
+        }
+
+        // Test an alert immediately
+        function testAlert(alertId) {
+            const savedAlerts = JSON.parse(localStorage.getItem('arafatAlerts') || '[]');
+            const alert = savedAlerts.find(a => a.id === alertId);
+
+            if (alert) {
+                speak("Hello! This is Arafat AI system. Test reminder starting now.", 0.85);
+                triggerAlert(alertId, alert.task, Math.min(alert.repeats, 2)); // Test with max 2 repeats
+            }
+        }
+
+        // Delete an alert
+        function deleteAlert(alertId) {
+            if (confirm("Are you sure you want to delete this alert?")) {
+                const savedAlerts = JSON.parse(localStorage.getItem('arafatAlerts') || '[]');
+                const updatedAlerts = savedAlerts.filter(a => a.id !== alertId);
+                localStorage.setItem('arafatAlerts', JSON.stringify(updatedAlerts));
+                loadAlerts();
+                speak("Alert deleted", 0.9);
+            }
+        }
+
+        // Toggle alert active/inactive
+        function toggleAlert(alertId) {
+            const savedAlerts = JSON.parse(localStorage.getItem('arafatAlerts') || '[]');
+            const updatedAlerts = savedAlerts.map(alert => {
+                if (alert.id === alertId) {
+                    return { ...alert, active: !alert.active };
+                }
+                return alert;
+            });
+            localStorage.setItem('arafatAlerts', JSON.stringify(updatedAlerts));
+            loadAlerts();
+        }
+
+        // Request notification permission
+        if ('Notification' in window) {
+            Notification.requestPermission();
+        }
+    </script>
+</body>
+</html>
